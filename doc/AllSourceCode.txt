@@ -1,0 +1,501 @@
+package goldencompiler;
+
+enum TokenType {
+    IDENTIFIER, NUMBER, OPERATOR, DELIMITER, STRING, HTMLTAG, HTMLCONTENT,
+    FUNCTION, LET, CONST,
+    NEWLINE, WHITESPACE,
+    DOCTYPE
+}package goldencompiler;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class Parser {
+    private final List<Token> tokens;
+    private int current = 0;
+    private ErrorReporter errorReporter;
+
+
+    public Parser(List<Token> tokens, ErrorReporter errorReporter) {
+        this.tokens = tokens;
+        this.errorReporter = errorReporter;
+    }
+
+    public void parse() {
+        // Comprobación inicial para <!DOCTYPE html>
+    if (!match(TokenType.DOCTYPE)) {
+        throw new ParseException("Se espera '<!DOCTYPE html>' al inicio del archivo.", peek().getLine());
+    }
+        while (!isAtEnd()) {
+            try {
+                parseStatement();
+            } catch (ParseException e) {
+                errorReporter.report(e.getLine(), 100, e.getMessage());
+                System.err.println("Parse error: " + e.getMessage());
+                synchronize();
+            }
+        }
+    }
+
+    private void parseStatement() {
+        if (match(TokenType.LET, TokenType.CONST)) {
+            //consume(TokenType.LET, "Expected 'let'");
+            parseDeclaration();
+        } else if (match(TokenType.FUNCTION)) {
+            parseFunctionDeclaration();
+        } else {
+            parseExpressionStatement();
+        }
+    }
+
+    private void parseDeclaration() {
+        System.out.println("Current Token at Declaration Start: " + peek().getValue());
+        //COnsume apropiate type if LET or CONST
+        if (match(TokenType.LET)) {
+            consume(TokenType.LET, "Expect 'let' keyword.");
+        } else if (match(TokenType.CONST)) {
+            consume(TokenType.CONST, "Expect 'const' keyword.");
+        }
+        
+        //consume(TokenType.LET, "Expect 'let' or 'const' keyword.");
+        Token name = consume(TokenType.IDENTIFIER, "Expect variable name.");
+        consume(TokenType.OPERATOR, "Expect '=' after variable name.");
+        parseExpression();
+        System.out.println("Current Token: " + peek().getValue());
+        consume(TokenType.DELIMITER, "Expect ';' after variable declaration.");
+    }
+
+    private void parseFunctionDeclaration() {
+        System.out.println("Current Token at Function Start: " + peek().getValue());
+        consume(TokenType.FUNCTION, "Se espera 'function'.", "function");
+        Token name = consume(TokenType.IDENTIFIER, "Se espera nombre de función.");
+        consume(TokenType.DELIMITER, "Se espera '(' después del nombre de la función.", "(");
+     // Opcionalmente parsea parámetros aquí
+        consume(TokenType.DELIMITER, "Se espera ')' después de los parámetros.", ")");
+        consume(TokenType.DELIMITER, "Se espera '{' antes del cuerpo de la función.", "{");
+        while (!check(TokenType.DELIMITER, "}")) {
+            parseStatement();
+        }
+        consume(TokenType.DELIMITER, "Se espera '}' después del cuerpo de la función.", "}");
+    }
+
+    
+    private void parseExpressionStatement() {
+        parseExpression();
+        consume(TokenType.DELIMITER, "Expect ';' after expression.");
+    }
+
+    private void parseExpression() {
+        // Simplified expression parsing
+        if (match(TokenType.IDENTIFIER)) {
+            // Variable reference or assignment
+            if (match(TokenType.OPERATOR)) {  // assuming '=' for simplicity
+                parseExpression();  // Right-hand side of assignment
+            }
+        } else if (match(TokenType.NUMBER, TokenType.STRING)) {
+            // Consumes a number or string literal
+            advance();
+        } else {
+            String error = "Unexpected token: " + peek().getValue();
+            throw new ParseException(error, peek().getLine());
+        }
+    }
+
+    private boolean match(TokenType... types) {
+        for (TokenType type : types) {
+            if (check(type)) {
+                System.out.println("Matched: " + peek().getValue());
+                //advance();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Token consume(TokenType type, String message, String expectedValue) {
+        System.out.println("Trying to consume: " + expectedValue + " Current token: " + peek().getValue());
+        if (check(type, expectedValue)) {
+            return advance();
+        }
+        throw new ParseException(message + " Found " + peek().getValue(), peek().getLine());
+        //throw new ParseException(message + " Found " + peek().getValue());
+    }
+    private Token peek() {
+        if (isAtEnd()) return null;
+        return tokens.get(current);
+    }
+    // Sobrecarga para casos sin valor específico
+    private Token consume(TokenType type, String message) {
+        if (check(type)) {
+            return advance();
+        }
+        throw new ParseException(message + " Found: " + peek().getValue(), peek().getLine());
+    }
+    
+
+    private boolean check(TokenType type, String expectedValue) {
+        if (isAtEnd()) return false;
+        Token currentToken = tokens.get(current);
+        return currentToken.getType() == type && currentToken.getValue().equals(expectedValue);
+    }
+    
+    // Sobrecarga del método `check` para casos donde solo importa el tipo
+    private boolean check(TokenType type) {
+        if (isAtEnd()) return false;
+        return tokens.get(current).getType() == type;
+    }
+    
+
+    private Token advance() {
+        if (!isAtEnd()) current++;
+        return previous();
+    }
+
+    private boolean isAtEnd() {
+        return current >= tokens.size();
+    }
+
+    private Token previous() {
+        return tokens.get(current - 1);
+    }
+
+    private void synchronize() {
+        advance();  // Avanza más allá del token problemático.
+        while (!isAtEnd()) {
+            if (previous().getType() == TokenType.DELIMITER && previous().getValue().equals(";")) {
+                return; // Retorna después de encontrar un delimitador de fin de expresión.
+            }
+            switch (peek().getType()) {
+                case FUNCTION:
+                case LET:
+                case CONST:
+                    return; // Estos tokens inician declaraciones, por lo tanto, son buenos puntos para reanudar.
+            }
+            advance();
+        }
+    }
+    
+    /*
+    private void synchronize() {
+        advance();
+        while (!isAtEnd()) {
+            if (previous().getType() == TokenType.DELIMITER) return;
+            if (match(TokenType.FUNCTION, TokenType.LET, TokenType.CONST)) return;
+            advance();
+        } 
+    } */
+
+
+
+
+
+    // Agregar main para pruebas
+    public static void main(String[] args) {
+        testParser("let x = 42;", "Prueba 1: Declaración de variable simple");
+        testParser("const str = \"Hello, world!\";", "Prueba 2: Asignación de string");
+        testParser("function test() { return test; }", "Prueba 3: Definición de función");
+        testParser("x += 5;", "Prueba 4: Asignación compuesta");
+    }
+
+    // Método para probar el Parser
+    public static void testParser(String input, String testDescription) {
+        Lexer lexer = new Lexer(input);
+        ArrayList<Token> tokens = lexer.tokenize();
+        System.out.println(testDescription);
+        for (Token token : tokens) {
+            System.out.println("Token: " + token.getType() + " - " + token.getValue());
+        }
+        ErrorReporter errorReporter = new ErrorReporter(new FileHandler("output.txt"));
+        Parser parser = new Parser(tokens, errorReporter);
+        //parser.parse();
+
+        System.out.println(testDescription);
+        try {
+            parser.parse();
+            System.out.println("Análisis completado correctamente.");
+        } catch (Exception e) {
+            System.out.println("Error durante el análisis: " + e.getMessage());
+        }
+        System.out.println("--------------");
+    }
+
+
+}
+package goldencompiler;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public class ErrorReporter {
+    private final Map<Integer, String> errors = new LinkedHashMap<>();
+    private FileHandler fileHandler;
+
+    public ErrorReporter(FileHandler fileHandler) {
+        this.fileHandler = fileHandler;
+    }
+
+    public void processFile() throws IOException {
+        List<String> lines = fileHandler.readLines();
+        checkForErrors(lines);
+        writeOutputFile(lines);
+    }
+
+    private void checkForErrors(List<String> lines) {
+        // Lógica para detectar errores genéricos en las líneas
+    }
+
+    private void writeOutputFile(List<String> lines) throws IOException {
+        List<String> outputLines = new ArrayList<>();
+        for (int i = 0; i < lines.size(); i++) {
+            int lineNumber = i + 1;
+            String line = String.format("%04d %s", lineNumber, lines.get(i));
+            outputLines.add(line);
+
+            if (errors.containsKey(lineNumber)) {
+                outputLines.add(errors.get(lineNumber));
+            }
+        }
+        fileHandler.writeLines(outputLines);
+    }
+
+    public void report(int lineNumber, String errorMessage) {
+        errors.put(lineNumber, "Error: " + errorMessage);
+    }
+    public void report(int lineNumber, int errorCode, String errorMessage) {
+        errors.put(lineNumber, "Error Code: " + errorCode + ", Message: " + errorMessage);
+    }
+}
+package goldencompiler;
+
+class ParseException extends RuntimeException {
+    private final int line;
+
+    public ParseException(String message, int line) {
+        super(message);
+        this.line = line;
+    }
+
+    public int getLine() {
+        return line;
+    }
+}
+package goldencompiler;
+
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class Lexer {
+    private final String input;
+    private final ArrayList<Token> tokens = new ArrayList<>();
+
+    public Lexer(String input) {
+        this.input = input;
+    }
+
+    public ArrayList<Token> tokenize() {
+        String tokenPatterns = "(?<DOCTYPE><!DOCTYPE\\s+html>)|" + // <!DOCTYPE html>
+                                "(?<WHITESPACE>[ \\t]+)|" + // "\\s+|" +  // ignore whitespace
+                                "(?<NEWLINE>\\n)|" + 
+                                "(?<LET>\\blet\\b)|" + //  reconocimiento de 'let'
+                                "(?<CONST>\\bconst\\b)|" + //  reconocimiento de 'const'
+                                "(?<FUNCTION>\\bfunction\\b)|" + //  reconocimiento de 'function'                         
+                               "(?<IDENTIFIER>[a-zA-Z_$][a-zA-Z\\d_$]*)|" + // 
+                               "(?<NUMBER>\\b\\d+(\\.\\d+)?\\b)|" + // Numbers, including decimals
+                               "(?<OPERATOR>\\+=|-=|\\*=|/=|==|!=|<=|>=|=|\\+|-|\\*|/)|" + // Operators, including compound
+                               "(?<DELIMITER>[{}();,])|" + // Delimiters
+                               "(?<STRING>\"(\\\\.|[^\"])*\")|" + // String literals with escapes
+                               "(?<HTMLTAG><\\/?[\\w\\s=\"']+\\/?>)|" + // HTML tags with attributes
+                               "(?<HTMLCONTENT>(?<=>)[^<]+(?=<))"; // Text between HTML tags
+    
+        Pattern pattern = Pattern.compile(tokenPatterns);
+        Matcher matcher = pattern.matcher(input);
+
+        int line = 1;
+
+        
+            while (matcher.find()) {
+                if (matcher.group("NEWLINE") != null) {
+                    line++;
+                    continue;
+                }
+                if (matcher.group("DOCTYPE") != null) {
+                    tokens.add(new Token(TokenType.DOCTYPE, matcher.group("DOCTYPE"), line));
+                } else if (matcher.group("WHITESPACE") != null) {
+                    continue; 
+                } else if (matcher.group("IDENTIFIER") != null) {
+                    tokens.add(new Token(TokenType.IDENTIFIER, matcher.group("IDENTIFIER"), line));
+                } else if (matcher.group("NUMBER") != null) {
+                    tokens.add(new Token(TokenType.NUMBER, matcher.group("NUMBER"), line));
+                } else if (matcher.group("OPERATOR") != null) {
+                    tokens.add(new Token(TokenType.OPERATOR, matcher.group("OPERATOR"), line));
+                } else if (matcher.group("DELIMITER") != null) {
+                    tokens.add(new Token(TokenType.DELIMITER, matcher.group("DELIMITER"), line));
+                } else if (matcher.group("STRING") != null) {
+                    tokens.add(new Token(TokenType.STRING, matcher.group("STRING"), line));
+                } else if (matcher.group("HTMLTAG") != null) {
+                    tokens.add(new Token(TokenType.HTMLTAG, matcher.group("HTMLTAG"), line));
+                } else if (matcher.group("HTMLCONTENT") != null) {
+                    tokens.add(new Token(TokenType.HTMLCONTENT, matcher.group("HTMLCONTENT"), line));
+                } else if (matcher.group("FUNCTION") != null) {
+                    tokens.add(new Token(TokenType.FUNCTION, matcher.group("FUNCTION"), line));
+                } else if (matcher.group("LET") != null) {
+                    tokens.add(new Token(TokenType.LET, matcher.group("LET"), line));
+                } else if (matcher.group("CONST") != null) {
+                tokens.add(new Token(TokenType.CONST, matcher.group("CONST"), line));
+            }
+
+        }
+        return tokens;    
+    }
+
+    public static void main(String[] args) {
+        // Las pruebas existentes
+        testLexer("let x = 42;", "Test 1: Simple variable declaration");
+        testLexer("const str = \"Hello, world!\";", "Test 2: String assignment");
+        testLexer("function test() {}", "Test 3: Function declaration");
+        testLexer("x += 5;", "Test 4: Compound assignment");
+        testLexer("<div>Sample</div>", "Test 5: Basic HTML");
+        testLexer("a -= b;", "Test 6: Compound subtraction");
+        testLexer("<input type=\"text\" id=\"username\" />", "Test 7: Self-closing HTML tag with attributes");
+        testLexer("<script>var x = 10;</script>", "Test 8: Script tag with JavaScript code inside");
+    
+        // Prueba nueva con HTML y JavaScript más complejo
+        testLexer("<!DOCTYPE html><html><head><title>Calculadora de Edad</title></head><body> <h1>Calculadora de Edad</h1><label for=\"nombre\">Nombre Completo: </label><input type=\"text\" id=\"nombre\" placeholder=\"Nombre Completo\"><label for=\"fechaNacimiento\">Fecha de Nacimiento: </label><input type=\"date\" id=\"fechaNacimiento\"><button onclick=\"calcularEdad()\">Calcular Edad</button><p id=\"resultado\"></p><script>function calcularEdad() { const nomb9re = document.getElementById(\"nombre\").value; const 8fechaNacimiento = new Date(document.getElementById(\"fechaNacimiento\").value); const fechaHoy = new Date(); const edad = fechaHoy.getFullYear() - fechaNacimiento.getFullYear(); let resultado = `${nombre}, tienes ${edad} años de edad. Eres `; if (edad < 18) { resultado += \"menor de edad.\"; } else if (edad >= 18 && edad < 65) { resultado += \"mayor de edad.\"; } else { resultado += \"adulto mayor.\"; } document.getElementById(\"resultado\").innerHTML = resultado; }</script></body></html>", "Test 9: Complex HTML with embedded JavaScript");
+    
+        // Nuevas pruebas para validar los nuevos patrones
+        testLexer("let varName = 10;", "Test 10: 'let' declaration");
+        testLexer("const PI = 3.14;", "Test 11: 'const' declaration");
+        testLexer("function add(a, b) { return a + b; }", "Test 12: 'function' declaration");
+    }
+
+    private static void testLexer(String input, String testDescription) {
+        Lexer lexer = new Lexer(input);
+        ArrayList<Token> tokens = lexer.tokenize();
+        System.out.println(testDescription);
+        for (Token token : tokens) {
+            System.out.println(token.type + " - " + token.value + " - TOKEN LINE: " + token.line);
+        }
+        System.out.println("------------");
+    }
+
+}
+
+
+package goldencompiler;
+
+import java.io.IOException;
+import java.util.ArrayList;
+
+public class Main {
+    public static void main(String[] args) {
+        String inputFilePath = args.length > 0 ? args[0] : "./doc/sample.html";
+        FileHandler fileHandler = new FileHandler(inputFilePath);
+        ErrorReporter errorReporter = new ErrorReporter(fileHandler);
+        
+        try {
+            // Leer las líneas del archivo de entrada y unirlas en una sola cadena
+            ArrayList<String> lines = (ArrayList<String>) fileHandler.readLines();
+            StringBuilder content = new StringBuilder();
+            for (String line : lines) {
+                content.append(line).append("\n");
+            }
+
+            // Inicializar Lexer y tokenizar el contenido del archivo
+            Lexer lexer = new Lexer(content.toString());
+            ArrayList<Token> tokens = lexer.tokenize();
+
+            for (Token token : tokens) {
+                System.out.println(token.getType() + " - " + token.getValue()+ " - TOKEN LINE: " + token.line);
+            }
+    
+            // Inicializar el Parser con los tokens generados
+            Parser parser = new Parser(tokens, errorReporter);
+            parser.parse();  // Aquí el Parser procesa los tokens y genera un AST
+            System.out.println("Procesamiento completado exitosamente.");
+
+        } catch (IOException e) {
+            System.err.println("Ocurrió un error al procesar el archivo: " + e.getMessage());
+        }
+
+        try {
+            // Inicializar el ErrorReporter y procesar el archivo
+            errorReporter.processFile();
+            System.out.println("Archivo procesado exitosamente. El archivo analizado fue guardado en: " + fileHandler.getOutputFilePath());
+        } catch (IOException e) {
+            System.err.println("Ocurrió un error al procesar el archivo: " + e.getMessage());
+        }
+    }
+}
+
+package goldencompiler;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class FileHandler {
+    private String inputFilePath;
+    private String outputFilePath;
+
+    public FileHandler(String inputFilePath) {
+        this.inputFilePath = inputFilePath;
+        this.outputFilePath = inputFilePath.replaceAll("\\.html$", ".txt");
+    }
+
+    public List<String> readLines() throws IOException {
+        List<String> lines = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFilePath))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                lines.add(line);
+            }
+        }
+        return lines;
+    }
+
+    public void writeLines(List<String> lines) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputFilePath))) {
+            for (String line : lines) {
+                writer.write(line);
+                writer.newLine();
+            }
+        }
+    }
+
+    public String getOutputFilePath() {
+        return outputFilePath;
+    }
+}
+package goldencompiler;
+
+class Token {
+    TokenType type;
+    String value;
+    int line;
+
+    Token(TokenType type, String value, int line) {
+        this.type = type;
+        this.value = value;
+        this.line = line;
+    }
+
+    TokenType getType() {
+        return type;
+    }
+
+    String getValue() {
+        return value;
+    }
+
+    int getLine() {
+        return line;
+    }
+}

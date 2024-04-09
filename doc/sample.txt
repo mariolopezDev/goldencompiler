@@ -1,0 +1,44 @@
+0001 <!DOCTYPE html>
+Error Code: 100, Message: Unexpected token: <!DOCTYPE html>
+0002 <html>
+0003 <head>
+0004 
+0005 <title>Calculadora de Edad</title>
+0006 </head>
+0007 <body> 
+0008 <h1>Calculadora de Edad</h1>
+0009 <label for="nombre">Nombre Completo: </label>
+0010 <input type="text" id="nombre" placeholder="Nombre Completo">
+0011 <label for="fechaNacimiento">Fecha de Nacimiento: </label>
+0012 <input type="date" id="fechaNacimiento">
+0013 <button onclick="calcularEdad()">Calcular Edad</button>
+0014 <p id="resultado"></p>
+0015 <script>
+0016 function calcularEdad() {
+0017 const nomb9re = document.getElementById("nombre").value;
+Error Code: 100, Message: Expect ';' after variable declaration. Found: document
+0018 const 8fechaNacimiento = new Date(document.getElementById("fechaNacimiento").value);
+Error Code: 100, Message: Expect ';' after variable declaration. Found: new
+0019 const fechaHoy = new Date();
+Error Code: 100, Message: Expect ';' after variable declaration. Found: new
+0020 const edad = fechaHoy.getFullYear() - fechaNacimiento.getFullYear();
+Error Code: 100, Message: Expect ';' after variable declaration. Found: fechaHoy
+0021 let resultado = `${nombre}, tienes ${edad} años de edad. Eres `;
+Error Code: 100, Message: Expect ';' after variable declaration. Found: $
+0022 if (edad < 18) {
+Error Code: 100, Message: Expect ';' after expression. Found: if
+0023 resultado += "menor de edad.";
+0024 } else if (edad >= 18 && edad < 65) {
+Error Code: 100, Message: Unexpected token: }
+0025 resultado += "mayor de edad.";
+0026 } else {
+Error Code: 100, Message: Unexpected token: }
+0027 resultado += "adulto mayor.";
+0028 }
+Error Code: 100, Message: Unexpected token: }
+0029 document.getElementById("resultado").innerHTML = resultado;
+0030 }
+Error Code: 100, Message: Unexpected token: }
+0031 </script>
+0032 </body>
+0033 </html>
